@@ -1,15 +1,31 @@
 import streamlit as st
-import joblib
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import SMOTE
 import numpy as np
 
-# Load model and threshold
-model = joblib.load('model.pkl')
-threshold = joblib.load('threshold.pkl')
+@st.cache_resource
+def train_model():
+    df = pd.read_csv('loan_data.csv')
+    df_model = pd.get_dummies(df, columns=['purpose'], drop_first=True)
+    X = df_model.drop('not.fully.paid', axis=1)
+    y = df_model['not.fully.paid']
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.30, random_state=42, stratify=y)
+    sm = SMOTE(random_state=42)
+    X_resampled, y_resampled = sm.fit_resample(X_train, y_train)
+    model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+    model.fit(X_resampled, y_resampled)
+    return model
+
+model = train_model()
+threshold = 0.14
 
 st.title("Loan Default Prediction")
 st.write("Enter borrower details to predict likelihood of loan default.")
 
-# Input fields
 credit_policy = st.selectbox("Meets Credit Policy?", [1, 0])
 purpose = st.selectbox("Loan Purpose", [
     'credit_card', 'debt_consolidation', 'educational',
@@ -27,7 +43,6 @@ inq_last_6mths = st.number_input("Credit Inquiries (Last 6 Months)", 0, 10, 1)
 delinq_2yrs = st.number_input("Delinquencies (Last 2 Years)", 0, 10, 0)
 pub_rec = st.number_input("Public Records", 0, 5, 0)
 
-# Encode purpose
 purpose_cols = {
     'purpose_credit_card': 0, 'purpose_debt_consolidation': 0,
     'purpose_educational': 0, 'purpose_home_improvement': 0,
@@ -38,7 +53,6 @@ if purpose != 'all_other':
     if key in purpose_cols:
         purpose_cols[key] = 1
 
-# Predict
 if st.button("Predict"):
     features = np.array([[
         credit_policy, int_rate, installment, log_annual_inc,
